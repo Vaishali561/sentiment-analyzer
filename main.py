@@ -4,11 +4,10 @@ from pydantic import BaseModel, Field
 from openai import OpenAI
 from typing import Literal
 
-# Initialize FastAPI
-app = FastAPI()
+# Initialize the App
+app = FastAPI(title="Sentiment API")
 
-# Initialize OpenAI Client
-# This looks for the OPENAI_API_KEY you set in the Render Dashboard
+# Initialize OpenAI Client (Uses the Environment Variable you set in Render)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # 1. Define the Schema for Structured Outputs
@@ -19,31 +18,34 @@ class SentimentResponse(BaseModel):
 class CommentRequest(BaseModel):
     comment: str
 
-# 2. Add a Home Route (Fixes the 404 on the main URL)
+# 2. Fixes the "Not Found" error for the base URL
 @app.get("/")
 async def home():
-    return {"status": "online", "message": "Visit /docs for the API interface"}
+    return {
+        "status": "online",
+        "message": "Send a POST request to /comment",
+        "docs": "/docs"
+    }
 
-# 3. The Sentiment Analysis Endpoint
+# 3. The Analysis Endpoint
 @app.post("/comment", response_model=SentimentResponse)
 async def analyze_sentiment(request: CommentRequest):
-    if not request.comment:
-        raise HTTPException(status_code=400, detail="Comment cannot be empty")
+    if not request.comment.strip():
+        raise HTTPException(status_code=400, detail="Comment is empty")
     
     try:
-        # Using Beta Parse for guaranteed JSON structure
+        # Structured Output call
         completion = client.beta.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "Analyze customer feedback. Return sentiment and a rating from 1-5."},
+                {"role": "system", "content": "Analyze customer feedback sentiment and rating (1-5)."},
                 {"role": "user", "content": request.comment},
             ],
             response_format=SentimentResponse,
         )
-
         return completion.choices[0].message.parsed
 
     except Exception as e:
-        # This will show up in your Render Logs if the API key is wrong
         print(f"Error: {e}")
-        raise HTTPException(status_code=500, detail="AI Analysis Failed")
+        raise HTTPException(status_code=500, detail="API Analysis Failed")
+        
