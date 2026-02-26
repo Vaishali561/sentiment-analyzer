@@ -1,16 +1,23 @@
 import os
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from openai import OpenAI
 from typing import Literal
 
-# Initialize the App
-app = FastAPI(title="Sentiment API")
+app = FastAPI()
 
-# Initialize OpenAI Client (Uses the Environment Variable you set in Render)
+# --- STEP 1: ADD CORS PERMISSIONS ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all websites to access your API
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# 1. Define the Schema for Structured Outputs
 class SentimentResponse(BaseModel):
     sentiment: Literal["positive", "negative", "neutral"]
     rating: int = Field(..., ge=1, le=5)
@@ -18,34 +25,23 @@ class SentimentResponse(BaseModel):
 class CommentRequest(BaseModel):
     comment: str
 
-# 2. Fixes the "Not Found" error for the base URL
 @app.get("/")
-async def home():
-    return {
-        "status": "online",
-        "message": "Send a POST request to /comment",
-        "docs": "/docs"
-    }
+async def root():
+    return {"status": "online"}
 
-# 3. The Analysis Endpoint
 @app.post("/comment", response_model=SentimentResponse)
 async def analyze_sentiment(request: CommentRequest):
-    if not request.comment.strip():
-        raise HTTPException(status_code=400, detail="Comment is empty")
-    
     try:
-        # Structured Output call
         completion = client.beta.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "Analyze customer feedback sentiment and rating (1-5)."},
+                {"role": "system", "content": "Analyze sentiment and rating."},
                 {"role": "user", "content": request.comment},
             ],
             response_format=SentimentResponse,
         )
         return completion.choices[0].message.parsed
-
     except Exception as e:
-        print(f"Error: {e}")
-        raise HTTPException(status_code=500, detail="API Analysis Failed")
-        
+        # This print will show up in your Render Logs
+        print(f"Error occurred: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
