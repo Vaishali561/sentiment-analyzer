@@ -16,7 +16,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# API Key check setup
+api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=api_key)
 
 class SentimentResponse(BaseModel):
     sentiment: Literal["positive", "negative", "neutral"]
@@ -27,10 +29,17 @@ class CommentRequest(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"status": "online"}
+    # Isse aapko browser mein confirm ho jayega ki key load ho rahi hai ya nahi
+    return {
+        "status": "online", 
+        "key_configured": bool(api_key)
+    }
 
 @app.post("/comment", response_model=SentimentResponse)
 async def analyze_sentiment(request: CommentRequest):
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OpenAI API Key is missing in Render environment.")
+        
     try:
         completion = client.beta.chat.completions.parse(
             model="gpt-4o-mini",
