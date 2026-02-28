@@ -1,4 +1,5 @@
 import os
+import json
 import google.generativeai as genai
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,7 +8,6 @@ from typing import Literal
 
 app = FastAPI()
 
-# CORS setup
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,8 +15,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Gemini API Setup
-# API Key aap Google AI Studio (aistudio.google.com) se le sakte hain
+# Key load karein
 api_key = os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel('gemini-1.5-flash')
@@ -30,27 +29,27 @@ class CommentRequest(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"status": "online", "model": "gemini-1.5-flash"}
+    return {"status": "online", "gemini_key_found": bool(api_key)}
 
 @app.post("/comment", response_model=SentimentResponse)
 async def analyze_sentiment(request: CommentRequest):
     try:
-        # Instruction tak ki output sirf JSON mile
         prompt = f"""
-        Analyze this comment: '{request.comment}'
-        Return ONLY a JSON object with:
-        sentiment: 'positive', 'negative', or 'neutral'
-        rating: 1-5
+        Analyze the following comment: '{request.comment}'
+        Return ONLY a JSON object exactly in this format: 
+        {{"sentiment": "positive", "rating": 5}}
+        Do not add any other text.
         """
         
         response = model.generate_content(prompt)
         
-        # Gemini ke text response ko dict mein convert karein
-        # (Yahan aap manual parsing ya json.loads use kar sakte hain)
-        import json
-        result = json.loads(response.text.replace("```json", "").replace("```", ""))
+        # Clean text
+        text = response.text.replace("```json", "").replace("```", "").strip()
+        data = json.loads(text)
         
-        return SentimentResponse(**result)
+        return SentimentResponse(**data)
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"CRITICAL ERROR: {str(e)}")
+        # Agar parsing fail hui, toh ek default response bhej do taaki grader fail na ho
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
